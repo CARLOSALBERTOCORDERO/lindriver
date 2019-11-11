@@ -22,8 +22,8 @@
 /*Static function prototypes */
 static void master_task(void *pvParameters);
 static void slave_task(void *pvParameters);
-
-
+static uint8_t parityBitP0(uint8_t header);
+static uint8_t parityBitP1(uint8_t header);
 
 /******************************************************************************
  * Public functions
@@ -266,4 +266,39 @@ static void slave_task(void *pvParameters)
     	/* Send the message data */
     	UART_RTOS_Send(&(handle->uart_rtos_handle), (uint8_t *)lin1p3_message, message_size);
     }
+}
+
+static uint8_t parityBitP0(uint8_t header)
+{
+	uint8_t returnVal = 0;
+	uint8_t bitID0 = header & 0x80;
+	uint8_t bitID1 = header & 0x40;
+	uint8_t bitID2 = header & 0x20;
+	uint8_t bitID4 = header & 0x08;
+    bitID0 >>= 7;
+    bitID1 >>= 6;
+    bitID2 >>= 5;
+    bitID4 >>= 3;
+    returnVal = bitID0 ^ bitID1;
+    returnVal ^= bitID2 ^ bitID4;
+
+    return returnVal;
+}
+
+
+static uint8_t parityBitP1(uint8_t header)
+{
+	uint8_t returnVal = 0;
+	uint8_t bitID1 = header & 0x40;
+	uint8_t bitID3 = header & 0x10;
+	uint8_t bitID4 = header & 0x08;
+	uint8_t bitID5 = header & 0x04;
+    bitID1 >>= 6;
+    bitID3 >>= 4;
+    bitID4 >>= 3;
+    bitID5 >>= 2;
+    returnVal = bitID1 ^ bitID3;
+    returnVal ^= bitID4 ^ bitID5;
+    returnVal ^= 0x01;
+    return returnVal;
 }
