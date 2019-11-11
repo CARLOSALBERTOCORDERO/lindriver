@@ -281,7 +281,7 @@ static uint8_t parityBitP0(uint8_t header)
     bitID4 >>= 3;
     returnVal = bitID0 ^ bitID1;
     returnVal ^= bitID2 ^ bitID4;
-
+    returnVal <<= 0x01;
     return returnVal;
 }
 
