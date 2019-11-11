@@ -108,6 +108,7 @@ static void master_task(void *pvParameters)
 	uint8_t  message_size = 0;
 	size_t n;
 	uint8_t  msg_idx;
+	uint8_t headerAux = 0u;
 
 	if(handle == NULL) {
 		vTaskSuspend(NULL);
@@ -151,6 +152,11 @@ static void master_task(void *pvParameters)
         	/* Put the ID into the header */
         	lin1p3_header[1] = ID<<2;
         	/* TODO: put the parity bits */
+        	headerAux = parityBitP0(lin1p3_header[1]);
+        	lin1p3_header[1] |= headerAux;
+        	headerAux = parityBitP1(lin1p3_header[1]);
+        	lin1p3_header[1] |= headerAux;
+
         	/* Init the message recevie buffer */
         	memset(lin1p3_message, 0, size_of_uart_buffer);
         	/* Calc the message size */
@@ -191,6 +197,8 @@ static void slave_task(void *pvParameters)
 	size_t n;
 	uint8_t  msg_idx;
 	uint8_t synch_break_byte = 0;
+	uint8_t headerAuxP0 = 0u;
+	uint8_t headerAuxP1 = 0u;
 
 	if(handle == NULL) {
 		vTaskSuspend(NULL);
@@ -230,7 +238,12 @@ static void slave_task(void *pvParameters)
     	   (lin1p3_header[0] != 0x55)) {
     		/* TODO: Check ID parity bits */
     		/* Header is not correct we are ignoring the header */
-    		continue;
+    		headerAuxP0 = lin1p3_header[1] & 0x02;
+    		headerAuxP1 = lin1p3_header[1] & 0x01;
+    		if((headerAuxP0 != parityBitP0(lin1p3_header[1])) || (headerAuxP1 != parityBitP1(lin1p3_header[1])))
+    		{
+    			continue;
+    		}
     	}
     	/* Get the message ID */
     	ID = (lin1p3_header[1] & 0xFC)>>2;
