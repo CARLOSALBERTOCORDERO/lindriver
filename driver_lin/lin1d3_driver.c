@@ -24,6 +24,7 @@ static void master_task(void *pvParameters);
 static void slave_task(void *pvParameters);
 static uint8_t parityBitP0(uint8_t header);
 static uint8_t parityBitP1(uint8_t header);
+static uint8_t checksum(uint8_t * data, uint8_t dataLength);
 
 /******************************************************************************
  * Public functions
@@ -109,6 +110,7 @@ static void master_task(void *pvParameters)
 	size_t n;
 	uint8_t  msg_idx;
 	uint8_t headerAux = 0u;
+	uint8_t chckSumAux = 0u;
 
 	if(handle == NULL) {
 		vTaskSuspend(NULL);
@@ -180,7 +182,11 @@ static void master_task(void *pvParameters)
         	UART_RTOS_Receive(&(handle->uart_rtos_handle), lin1p3_message, message_size, &n);
 
         	/* TODO: Check the checksum */
-
+        	chckSumAux = checksum((uint8_t *)&lin1p3_message[0], message_size);
+        	if(chckSumAux != lin1p3_message[message_size])
+        	{
+        		continue;
+        	}
         	/* Call the message callback */
         	handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
         }
@@ -199,6 +205,7 @@ static void slave_task(void *pvParameters)
 	uint8_t synch_break_byte = 0;
 	uint8_t headerAuxP0 = 0u;
 	uint8_t headerAuxP1 = 0u;
+	uint8_t chckSumAux = 0u;
 
 	if(handle == NULL) {
 		vTaskSuspend(NULL);
@@ -275,6 +282,8 @@ static void slave_task(void *pvParameters)
     		break;
     	}
     	/* TODO: Add the checksum to the message */
+    	chckSumAux = checksum((uint8_t *)&lin1p3_message[0], message_size);
+    	lin1p3_message[message_size] = chckSumAux;
     	message_size+=1;
     	/* Send the message data */
     	UART_RTOS_Send(&(handle->uart_rtos_handle), (uint8_t *)lin1p3_message, message_size);
@@ -313,5 +322,19 @@ static uint8_t parityBitP1(uint8_t header)
     returnVal = bitID1 ^ bitID3;
     returnVal ^= bitID4 ^ bitID5;
     returnVal ^= 0x01;
+    return returnVal;
+}
+
+static uint8_t checksum(uint8_t * data, uint8_t dataLength)
+{
+	uint16_t auxSum = 0;
+	uint8_t returnVal = 0;
+	uint8_t index = 0;
+    for(index = 0; dataLength > index; index++)
+    {
+        auxSum += data[index];
+    }
+    returnVal = auxSum % 255;
+
     return returnVal;
 }
