@@ -132,6 +132,10 @@ static void master_task(void *pvParameters)
     {
         vTaskSuspend(NULL);
     }
+
+    /* Make a pause here so the other task can be ready to wait for messages */
+    vTaskDelay(100);
+
     /* Configure 13 bits break transmission */
     handle->uart_rtos_handle.base->S2 |= (1<<2);
 
@@ -150,6 +154,8 @@ static void master_task(void *pvParameters)
 
         	/* If the message ID was not found then ignore it */
         	if(msg_idx == lin1d3_max_supported_messages_per_node_cfg_d) continue;
+
+
 
         	/* Put the ID into the header */
         	lin1p3_header[1] = ID<<2;
@@ -174,13 +180,16 @@ static void master_task(void *pvParameters)
         	}
         	message_size+=1;
         	/* Send a Break It is just sending one byte 0, *** CHANGE THIS WITH A REAL SYNCH BREAK ****/
-        	UART_RTOS_Send(&(handle->uart_rtos_handle), (uint8_t *)&synch_break_byte, 1);
-        	vTaskDelay(1);
+            /* Send the break signal */
+        	handle->uart_rtos_handle.base->C2 |= 0x01;
+        	handle->uart_rtos_handle.base->C2 &= 0xFE;
+            vTaskDelay(1);// make a small pause to prevent issues due to Rx slow break detection
+
         	/* Send the header */
         	UART_RTOS_Send(&(handle->uart_rtos_handle), (uint8_t *)lin1p3_header, size_of_lin_header_d);
         	/* Wait for the response */
         	UART_RTOS_Receive(&(handle->uart_rtos_handle), lin1p3_message, message_size, &n);
-
+        	message_size--;
         	/* TODO: Check the checksum */
         	chckSumAux = checksum((uint8_t *)&lin1p3_message[0], message_size);
         	if(chckSumAux != lin1p3_message[message_size])
@@ -232,18 +241,20 @@ static void slave_task(void *pvParameters)
     	char dummy;
     	/* Init the message header buffer */
     	memset(lin1p3_header, 0, size_of_lin_header_d);
-    	/* Wait for a synch break This code is just waiting for one byte 0, *** CHANGE THIS WITH A REAL SYNCH BREAK ****/
-    	synch_break_byte = 0xFF;
-    	do {
-    		UART_RTOS_Receive(&(handle->uart_rtos_handle), &synch_break_byte, 1, &n);
-    	}while(synch_break_byte != 0);
+    	/* Wait for break */
+    	DisableIRQ(UART4_RX_TX_IRQn); //Disable RX interrupt so the break won't mess with the UART_RTOS driver
+    	handle->uart_config.base->S2 |= 0x01<<7; //Clear the LIN Break Detect Interrupt Flag
+    	handle->uart_config.base->S2 |= 0x01<<1; //Enable LIN Break Detection
+    	while((handle->uart_config.base->S2 &  0x01<<7) == 0x00) vTaskDelay(1); //Wait for the flag to be set
+    	handle->uart_config.base->S2 &= ~(0x01<<1); //Disable LIN Break Detection
+    	handle->uart_config.base->S2 |= 0x01<<7; //Clear the LIN Break Detect Interrupt Flag
+    	EnableIRQ(UART4_RX_TX_IRQn); //Enable RX interrupt so the UART_RTOS driver works again
 
     	/* Wait for header on the UART */
     	UART_RTOS_Receive(&(handle->uart_rtos_handle), lin1p3_header, size_of_lin_header_d, &n);
     	/* Check header */
-    	if(/*(lin1p3_header[0] != 0x00) &&*/
-    	   (lin1p3_header[0] != 0x55)) {
-    		/* TODO: Check ID parity bits */
+    	if (lin1p3_header[0] == 0x55) {
+    		/* Check ID parity bits */
     		/* Header is not correct we are ignoring the header */
     		headerAuxP0 = lin1p3_header[1] & 0x02;
     		headerAuxP1 = lin1p3_header[1] & 0x01;
@@ -251,6 +262,10 @@ static void slave_task(void *pvParameters)
     		{
     			continue;
     		}
+    	}
+    	else
+    	{
+    		continue;
     	}
     	/* Get the message ID */
     	ID = (lin1p3_header[1] & 0xFC)>>2;
